@@ -129,7 +129,7 @@ void idx_combination(int num, int bits, int**arr)
     string bitmask(bits, 1); // K leading 1's
     bitmask.resize(num, 0); // N-K trailing 0's
 
-    int i = 0, j = 0;
+    int i = 1, j = 0;
     do {
         j = 0;
         for (int k = 0; k < num; ++k)
@@ -182,6 +182,9 @@ int main (int argc,  char **argv) {
         idx_comb[i] = (int *)malloc(cache[5] * sizeof(int));
     
     idx_combination(cache[0] - cache[4], cache[5], idx_comb);
+    
+    for(int i = 0; i< cache[5]; ++i)
+        idx_comb[0][i] = cache[0] - cache[4] - cache[5] + i;
     
     for(int z = 0; z< idx_N; ++z)
     {
