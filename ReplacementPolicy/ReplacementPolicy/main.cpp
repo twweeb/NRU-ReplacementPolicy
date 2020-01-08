@@ -10,12 +10,16 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <algorithm>
 #include <math.h>
+#include <time.h>
 
 using namespace std;
 
 ofstream fout;
-string outs[] = {"Address bits: ", "Block size: ", "Cache sets: ", "Associativity: ", "Offset bit count: ", "Indexing bit count: ", "Indexing bits: ", ".end", "Total cache miss count: "};
+string outs[] = {"Address bits: ", "Block size: ", "Cache sets: ", "Associativity: ", "Offset bit count: ", "Indexing bit count: ", "Indexing bits: ", ".end", "Total cache miss count: ", ""};
+
+int idx_N = 5000;
 
 int BinToDec(string str)
 {
@@ -64,15 +68,7 @@ vector<int> readConfig(const string& filename)
     // Index bit count
     lines.push_back(tmp2 = log_2(lines[2]));
     fout << outs[4] << tmp << "\n"
-         << outs[5] << tmp2 << "\n"
-         << outs[6];
-    for (int i = 0; i< tmp2; i++)
-    {
-        if(i != 0) fout << " ";
-        fout << tmp + tmp2 - i -1 ;
-    }
-    
-    fout << "\n" << "\n";
+         << outs[5] << tmp2 << "\n";
     
     return lines;
 }
@@ -85,7 +81,7 @@ vector<string> readRef(const string& filename)
     int i = 0;
     while (getline(source, line))
     {
-        if (!i++) fout << line << "\n";
+        if (!i++) outs[9] = line;
         if (isdigit(line[0])) lines.push_back(line);
     }
     return lines;
@@ -123,7 +119,36 @@ void reset_data(int cache_num, int total_set_num, int**arr)
         arr[cache_num][i] = -1;
 }
 
+int idx_chose(int i, int n, int**arr)
+{
+    return 0;
+}
+
+void idx_combination(int num, int bits, int**arr)
+{
+    string bitmask(bits, 1); // K leading 1's
+    bitmask.resize(num, 0); // N-K trailing 0's
+
+    int i = 0, j = 0;
+    do {
+        j = 0;
+        for (int k = 0; k < num; ++k)
+        {
+            if (bitmask[k])
+            {
+                arr[i][j++] = k;
+            }
+        }
+        idx_N = i++;
+        if(i == 5000) break;
+    } while (prev_permutation(bitmask.begin(), bitmask.end()));
+}
+
+int fact(int n, int m);
+
 int main (int argc,  char **argv) {
+    double time_spent;
+    clock_t begin = clock();
     fout.open ("index.rpt");
     
     // Decide memory config:
@@ -150,15 +175,95 @@ int main (int argc,  char **argv) {
         reset_data(i, cache[3], cache_data);
     }
     
-    int miss_cnt = 0, idx = 0, find = 0;
+    int miss_cnt = 0, idx = 0, find = 0, min_miss = 2147483647, min_miss_idx = 0;
+    
+    int **idx_comb = (int **)malloc(idx_N * sizeof(int *));
+    for(int i = 0; i< idx_N; ++i)
+        idx_comb[i] = (int *)malloc(cache[5] * sizeof(int));
+    
+    idx_combination(cache[0] - cache[4], cache[5], idx_comb);
+    
+    for(int z = 0; z< idx_N; ++z)
+    {
+        for (int i = 0; i< reference.size(); ++i)
+        {
+            string s = "";
+            for(int k = 0; k < cache[5]; ++k)
+            {
+                s += reference[i][idx_comb[z][k]];
+            }
+            idx = BinToDec(s);
+            find = 0;
+            for(int j = 0; j < cache[3]; ++j)
+            {
+                if(cache_data[idx][j] == BinToDec(reference[i].substr(0, cache[0] - cache[4])))
+                {
+                    find = 1;
+                    cache_nru[idx][j] = 0;
+                    break;
+                }
+            }
+            
+            if(!find)
+            {
+                find = 0;
+                miss_cnt += 1;
+                for(int j = 0; j < cache[3]; ++j)
+                {
+                    if(cache_nru[idx][j] == 1)
+                    {
+                        find = 1;
+                        cache_nru[idx][j] = 0;
+                        cache_data[idx][j] = BinToDec(reference[i].substr(0, cache[0] - cache[4]));
+                        break;
+                    }
+                }
+                if(!find)
+                {
+                    reset_nrubit(idx, cache[3], cache_nru);
+                    cache_nru[idx][0] = 0;
+                    cache_data[idx][0] = BinToDec(reference[i].substr(0, cache[0] - cache[4]));
+                }
+            }
+        }
+        
+        if(miss_cnt < min_miss)
+        {
+            min_miss  = min(min_miss, miss_cnt);
+            min_miss_idx = z;
+        }
+        miss_cnt = 0;
+        for (int j = 0; j < cache[2]; ++j)
+        {
+            reset_nrubit(j, cache[3], cache_nru);
+            reset_data(j, cache[3], cache_data);
+        }
+        clock_t end = clock();
+        time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+        if(time_spent > 58) break;
+    }
+
+    fout << outs[6];
+    for (int i = 0; i< cache[5]; ++i)
+    {
+        if(i != 0) fout << " ";
+        fout << cache[0] - 1 - idx_comb[min_miss_idx][i];
+    }
+    fout << "\n" << "\n" << outs[9] << "\n";
+    
     for (int i = 0; i< reference.size(); ++i)
     {
-        idx = BinToDec(reference[i].substr(cache[0] - cache[4] - cache[5], cache[5]));
+        string s = "";
+        for(int k = 0; k< cache[5]; ++k)
+        {
+            s += reference[i][idx_comb[min_miss_idx][k]];
+        }
+        idx = BinToDec(s);
         find = 0;
         for(int j = 0; j < cache[3]; ++j)
         {
             //if(i< 10) cout << (reference[i].substr(0, cache[0] - cache[4] - cache[5]).c_str()) << " " <<cache_data[idx][j] << " " << BinToDec(reference[i].substr(0, cache[0] - cache[4] - cache[5]).c_str()) <<endl;
-            if(cache_data[idx][j] == BinToDec(reference[i].substr(0, cache[0] - cache[4] - cache[5])))
+            if(cache_data[idx][j] == BinToDec(reference[i].substr(0, cache[0] - cache[4])))
             {
                 find = 1;
                 cache_nru[idx][j] = 0;
@@ -178,7 +283,7 @@ int main (int argc,  char **argv) {
                 {
                     find = 1;
                     cache_nru[idx][j] = 0;
-                    cache_data[idx][j] = BinToDec(reference[i].substr(0, cache[0] - cache[4] - cache[5]));
+                    cache_data[idx][j] = BinToDec(reference[i].substr(0, cache[0] - cache[4]));
                     break;
                 }
             }
@@ -186,10 +291,11 @@ int main (int argc,  char **argv) {
             {
                 reset_nrubit(idx, cache[3], cache_nru);
                 cache_nru[idx][0] = 0;
-                cache_data[idx][0] = BinToDec(reference[i].substr(0, cache[0] - cache[4] - cache[5]));
+                cache_data[idx][0] = BinToDec(reference[i].substr(0, cache[0] - cache[4]));
             }
         }
     }
+    
     fout << outs[7] << "\n\n" << outs[8] << miss_cnt << "\n";
     fout.close();
     
